@@ -6,6 +6,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      # `user: "1000:1000"` で起動するが、コンテナの /etc/passwd に kite ユーザは
+      # 居ないので $HOME が空になる。Hermes が ~/.hermes を `/.hermes` に解決して
+      # Permission denied になるため、明示的に kite の HOME を渡す。
+      HOME: /home/kite
     # UID 1000 で起動 (host の kite ユーザーと一致)。bind mount された
     # ~/.hermes/ への書き込みが host 側でも kite 所有のまま保たれる。
     user: "1000:1000"
