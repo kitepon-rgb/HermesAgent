@@ -13,7 +13,9 @@ _DEFAULT_PROMPTS_DIR = Path(__file__).resolve().parents[2] / "DOCS" / "prompts"
 PROMPTS_DIR = Path(os.getenv("X_HERMES_MCP_PROMPTS_DIR") or _DEFAULT_PROMPTS_DIR)
 
 _PROMPT_RE = re.compile(
-    r"##\s*採用プロンプト[^\n]*\n+```[a-zA-Z0-9]*\n(.*?)\n```",
+    # `## 採用プロンプト` 見出しの後、最初に現れるコードフェンスの中身を取り出す。
+    # 見出しとフェンスの間に説明段落 (V3 の変更点など) があっても許容する。
+    r"##\s*採用プロンプト[^\n]*\n.*?```[a-zA-Z0-9]*\n(.*?)\n```",
     re.DOTALL,
 )
 

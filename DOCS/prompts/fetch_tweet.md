@@ -10,12 +10,19 @@ ConnectC2X の `fetch_tweet` MCP ツールが返す情報を、Hermes (`hermes -
 
 - `url`: X (Twitter) の投稿 URL (例: `https://x.com/xai/status/2055745332919808181`)
 
-## 採用プロンプト (V2)
+## 採用プロンプト (V3)
+
+V3 の変更点: x_search のパラメータ `enable_image_understanding=true` `enable_video_understanding=true` を明示的に渡すよう指示。これで media 配列の `alt_text` に Grok の画像/動画解釈が入る (V2 では常に空だった)。
 
 ```
 You are a strict JSON extraction agent for X (Twitter) post data.
 
 Task: Use the x_search tool — calling it as many times as needed — to fetch ALL available information about the post at the given URL. Then return a single JSON object matching the schema below. Output ONLY the JSON object — no commentary, no markdown fences, no preamble.
+
+When invoking x_search, ALWAYS set these parameters:
+- enable_image_understanding: true
+- enable_video_understanding: true
+These let Grok describe attached photos / videos / GIFs so the `media[].alt_text` field can be populated. Skipping them leaves media descriptions empty.
 
 Schema:
 {
@@ -46,7 +53,7 @@ EXTRACTION GUIDELINES — make a determined effort to fill every field. null is 
 - created_at: even if no exact ISO timestamp is available, capture the date string Grok provides (e.g., "May 16, 2026").
 - metrics: engagement counts are visible on x.com — likes, reposts, replies, quotes, bookmarks, views/impressions. Call x_search specifically asking for engagement metrics if not present on the first pass. Output values as-is, including rounded display forms like "5.2K" or "1.58M".
 - referenced_tweets: if the post quotes / replies to / reposts another, identify the other post's tweet ID and author username via a second x_search call.
-- media: if there is an attached image / video / GIF / link card, list each with type and any direct media URL Grok provides.
+- media: if there is an attached image / video / GIF / link card, list each entry. Fill `alt_text` with a concise description of what is shown (one short sentence). Direct media URLs may or may not be available — null is OK there, but `alt_text` should be filled whenever there is any visual content.
 
 Rules:
 1. Output must be valid JSON, parseable by JSON.parse without modification.
@@ -57,7 +64,7 @@ Rules:
 URL: {URL}
 ```
 
-## 実測結果 (2026-05-17, `https://x.com/xai/status/2055745332919808181`)
+## 実測結果 (V3, 2026-05-18, `https://x.com/xai/status/2055745332919808181`)
 
 応答時間: 約 2 分 (Grok が x_search を複数回呼び出すため)
 
@@ -65,18 +72,20 @@ URL: {URL}
 |---|---|
 | `tweet_id` | `"2055745332919808181"` ✓ |
 | `url` | 正規 URL ✓ |
-| `author.username` / `display_name` | `"xai"` / `"xAI"` ✓ |
+| `author.username` | `"xai"` ✓ |
+| `author.display_name` | null (V2 で取れていた `"xAI"` が空になる時もある、Grok 任意) |
 | `created_at` | `"May 16, 2026"` (人間可読、ISO 8601 ではない) |
 | `text` | t.co 展開済み (`https://x.ai/news/grok-hermes` が見える) ✓ |
-| `referenced_tweets` | 1 階層 (`tweet_id` + `author_username` + `text` 全て埋まる) |
-| `metrics.likes` | `"5585"` (正確な整数、文字列型) |
-| `metrics.retweets` | `"872"` |
-| `metrics.replies` | `"549"` |
-| `metrics.quotes` | `"397"` |
-| `metrics.bookmarks` | `"2439"` (ConnectC2X は通常返さない、Hermes 優位) |
-| `metrics.views` | `"1869907"` |
-| `media` | `[]` (画像付き投稿でも取得できず) |
-| `notes` | 補足コメント (例: prior Grok subscription integration への follow-up) |
+| `referenced_tweets` | 1 階層、`author_username` + `text` 取得、`tweet_id` は空になる場合あり |
+| `metrics.likes` | `"6356"` (正確な整数、文字列型) |
+| `metrics.retweets` | `"1078"` |
+| `metrics.replies` | `"596"` |
+| `metrics.quotes` | `"455"` |
+| `metrics.bookmarks` | `"2878"` (ConnectC2X は通常返さない、Hermes 優位) |
+| `metrics.views` | `"2403891"` |
+| **`media[0].type`** | **`"photo"` ✓** |
+| **`media[0].alt_text`** | **`"The image shows the Grok/xAI logo on the left and the dotted Hermes caduceus-style logo on the right against a dark background."`** ← V3 で取れた、V2 では常に空 |
+| `notes` | null になる場合あり (V2 では文脈コメントが出ていた) |
 
 ## ConnectC2X 比較
 
@@ -101,14 +110,25 @@ URL: {URL}
 
 ## 既知の限界 (アーキテクチャ外)
 
-- **media**: x_search の戻りに添付メディア URL が含まれない。「画像付き投稿である」という言及はあるが、構造化された media 配列としては埋まらない。プロンプトでさらに押しても変わらず (V3 で確認済み)。この機能が必須の用途は ConnectC2X 直接利用
+- **media 直接 URL**: x_search の戻りに添付メディアの直接 URL は含まれない (`media[].url` は null)。`alt_text` に Grok の視覚解釈は入る (V3 で実証)
 - **日時の機械可読化**: 「May 16, 2026」形式。下流で ISO 8601 にしたい場合はパース層を別途用意
 
-## V3/V4 で失敗したこと (記録)
+## 過去 V3/V4 (異なる方向) で失敗したこと (記録)
 
-- V3「Follow chain up to 3 levels」「media must be listed」を盛る → metrics 全項目 null
-- V4「PRIMARY OBJECTIVES priority order で metrics 最優先、追従を 2 位」 → 同じく metrics 全項目 null、しかも 5 階層命令しても深まらず 1 階層止まり
-- 結論: プロンプトに注文を増やすほど Grok の x_search 集中度が落ちる。V2 の粒度が局所最適
+過去に試した別の V3 (深さ追従強要) や V4 (priority 並び替え) では、プロンプトに注文を増やすと Grok の x_search 集中度が落ちて metrics が全 null に退化した。**注文を増やす方向ではダメ**、しかし **x_search パラメータを明示する方向**は機能を引き出せると今回 (現 V3) 実証。
+
+## x_search 明示パラメータ (現 V3 の鍵)
+
+x_search は以下のパラメータを受け取れる (xAI ドキュメント由来):
+
+- `query` (必須) — 自然言語クエリ
+- `allowed_x_handles` — 含めるアカウント (max 10)
+- `excluded_x_handles` — 除外するアカウント (max 10)
+- `from_date` / `to_date` — YYYY-MM-DD
+- `enable_image_understanding` — 画像内容理解
+- `enable_video_understanding` — 動画内容理解
+
+現 V3 では `enable_image_understanding=true` と `enable_video_understanding=true` を明示することで media の alt_text を埋めるよう Grok に依頼している。
 
 ## 使い方 (CLI 直)
 

@@ -18,12 +18,18 @@ ConnectC2X の `get_quote_tweets` MCP ツールに相当する、指定ツイー
 - `source_tweet_url`: 引用元になるツイート URL
 - `max_quotes`: 取得件数 (1〜10 程度、既定 8)
 
-## 採用プロンプト (V1)
+## 採用プロンプト (V2)
+
+V2 の変更点: x_search の `excluded_x_handles=[source_author]` で**ソース著者自身の投稿を除外**する。これにより、引用元と同じ著者のフォロー投稿が結果に混入することを防ぐ。
 
 ```
 You are a strict JSON extraction agent for X (Twitter) quote tweets.
 
 Task: Use the x_search tool — calling it multiple times if needed — to identify recent posts that quote-tweeted the specified source post. For each quote tweet, extract its identifier, author handle, brief text, and date. Return a single JSON object matching the schema. Output ONLY the JSON object — no commentary, no markdown fences, no preamble.
+
+When invoking x_search:
+- First identify the source post's author (resolve from the URL if not given).
+- Pass `excluded_x_handles=[<source_author_username>]` so the source author's own posts (replies, follow-ups) do not appear in the results.
 
 Schema:
 {

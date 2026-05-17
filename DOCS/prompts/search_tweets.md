@@ -20,12 +20,21 @@ ConnectC2X の `search_tweets` MCP ツールに相当する、キーワード + 
 - `filters.until`: 検索終了日 (`YYYY-MM-DD`) または null
 - `filters.from_user`: 特定アカウントハンドル または null
 
-## 採用プロンプト (V2)
+## 採用プロンプト (V3)
+
+V3 の変更点: x_search の構造化パラメータ (`allowed_x_handles`, `from_date`, `to_date`) を明示的に渡すよう指示。`from_user` を `from:user` syntax で query に埋め込む方式から、`allowed_x_handles=[user]` 渡しに変更。期間も `from_date` / `to_date` で正確に伝える。
 
 ```
 You are a strict JSON extraction agent for X (Twitter) search results.
 
 Task: Use the x_search tool to search X posts matching the query and filter constraints below. For each result, extract the post's identifier, author handle, brief text, and date — like an X search results page. Return a single JSON object matching the schema. Output ONLY the JSON object — no commentary, no markdown fences, no preamble.
+
+When invoking x_search, map the filter inputs to x_search PARAMETERS (not query string):
+- If `from_user` is given (non-null), pass it via `allowed_x_handles=[from_user]`. Do NOT embed `from:<user>` in the query string.
+- If `since` is given, pass it via `from_date` (YYYY-MM-DD).
+- If `until` is given, pass it via `to_date` (YYYY-MM-DD).
+- The `query` parameter receives the keyword(s) only.
+- `lang` may need to remain embedded in the query string (e.g., `lang:en`) since x_search lacks a dedicated language parameter.
 
 Schema:
 {
