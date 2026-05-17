@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
 
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-PROMPTS_DIR = _PROJECT_ROOT / "DOCS" / "prompts"
+# ローカル開発: パッケージから 2 つ上 (= プロジェクトルート) の DOCS/prompts を読む。
+# Docker / インストール後: `X_HERMES_MCP_PROMPTS_DIR` 環境変数で絶対パス指定。
+_DEFAULT_PROMPTS_DIR = Path(__file__).resolve().parents[2] / "DOCS" / "prompts"
+PROMPTS_DIR = Path(os.getenv("X_HERMES_MCP_PROMPTS_DIR") or _DEFAULT_PROMPTS_DIR)
 
 _PROMPT_RE = re.compile(
     r"##\s*採用プロンプト[^\n]*\n+```[a-zA-Z0-9]*\n(.*?)\n```",

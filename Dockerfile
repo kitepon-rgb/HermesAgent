@@ -19,6 +19,10 @@ COPY DOCS/prompts ./DOCS/prompts
 
 RUN uv pip install --system --no-cache .
 
+# uv pip install 後はコード本体が /usr/local/lib/python3.12/site-packages/ に移るため、
+# DOCS/prompts への相対参照が崩れる。env で絶対パスを与える。
+ENV X_HERMES_MCP_PROMPTS_DIR=/app/DOCS/prompts
+
 EXPOSE 65432
 
 # host の ~/.hermes/ を bind mount できるよう、コンテナ内に同じパスを用意。
