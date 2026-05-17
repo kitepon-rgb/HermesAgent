@@ -152,22 +152,30 @@ x_search の返り値構造:
 - [x] Claude Code 再起動 → 5 ツールが MCP 経由で可視確認 (2026-05-17)
 - [x] Claude Code から `fetch_tweet` 呼び出し → end-to-end 動作確認 (応答 ~90 秒、JSON 9 キー揃う、metrics 正確値、`link_card` も検出)
 
-### 公開ツール一覧
+### 公開ツール一覧 (6 ツール)
 
-低レイヤ (Phase 2 のプロンプトを直接ラップ、1 ツール = 1 hermes 呼び出し):
+**Raw 経路** (P7 で追加、xAI Responses API 直接呼び出し、Grok-4.3 synthesis 無し):
 
-- `fetch_tweet` — URL → 単一ツイート構造化 (1 階層引用言及付き、深掘りなし)
-- `search_tweets` — キーワード → ツイートリスト構造化 (Phase 2 未着手)
-- `search_tweets_all` — 全期間キーワード検索 (Phase 2 未着手)
-- `get_trends` — 地域 → トレンドリスト構造化 (Phase 2 未着手)
-- `get_quote_tweets` — ツイート ID → 引用一覧構造化 (Phase 2 未着手)
+- `x_search` — 検索 + 構造化応答。**応答 30〜45 秒** (最速)、出力は xAI 生構造体
+  - パラメータ: `query` (必須), `allowed_x_handles`, `excluded_x_handles`, `from_date`, `to_date`, `enable_image_understanding`, `enable_video_understanding`
+  - 戻り: `{success, provider, credential_source, tool, model, query, answer, citations, inline_citations}`
 
-上位レイヤ (低レイヤを内部で複数回呼び出して合成):
+**Synthesized 経路** (Phase 2-3 で作った Grok 経由スキーマ整形ツール):
 
-- `fetch_tweet_chain` — URL + `max_depth` (1〜2、既定 2、ハード上限 2) → ツリー状の構造化
-  - 内部実装: root を `fetch_tweet` で取得 → `referenced_tweets[*].tweet_id` を URL 化 → 各 ID を並列で `fetch_tweet` 呼び出し → 結果を木構造に組み立て
+- `fetch_tweet` — URL → 単一ツイート ConnectC2X 互換 schema (V3、image understanding 有効)
+- `search_tweets` — キーワード → ツイートリスト構造化 (V3、`allowed_x_handles`/`from_date`/`to_date` を構造化パラメータで渡す)
+- `get_trends` — 地域 → トレンドリスト構造化 (V1)
+- `get_quote_tweets` — ツイート URL → 引用ツイート一覧 (V2、`excluded_x_handles=[source_author]` で自己除外)
+- `fetch_tweet_chain` — 上位コンポジション、URL + `max_depth`(1〜2) → ツリー構造
+  - 内部実装: root を `fetch_tweet` で取得 → `referenced_tweets[*].tweet_id` を並列展開
   - 最大応答時間目安: ~4 分 (depth 2、ファンアウト並列処理)
   - ConnectC2X の 5 階層自動展開には合わせない (実時間の代償が大きすぎる)
+
+**使い分けガイド**:
+
+- 高速・確実・構造化されてれば良い → **`x_search` (raw)**
+- ConnectC2X 互換スキーマで使い回したい → `fetch_tweet` 等の synthesized
+- 引用ツリー深掘り → `fetch_tweet_chain`
 
 ### クライアント側ツール優先制御
 
@@ -221,7 +229,7 @@ tools_deny = [
 |---|---|---|
 | 外部到達 | DDNS サブドメイン + 共通 Caddy (TLS 終端) | `~/license-server/Caddyfile` 一元管理 |
 | サブドメイン | `hermes.kitepon.dynv6.net` | 将来 Phase 5+ の親ドメインとしても使う |
-| 認証 | Bearer トークン (env var、`Authorization: Bearer ...`) | ソロ運用なので OAuth 不要 |
+| 認証 | **OAuth 2.1 (SQLite-backed、master password consent)** ← P6 で bearer から移行 | ip-mcp パターン踏襲 |
 | トランスポート | streamable-http | FastMCP 標準 |
 | ポート | 65432 (192.168.1.2 にバインド) | 既存クラスタ全部から離れた 6 万番台 |
 | ホスト構成 | Docker compose (`~/X-HERMES-MCP/`) | `~/ip-mcp/` を踏襲 |
@@ -268,7 +276,77 @@ hermes.kitepon.dynv6.net {
 
 ---
 
-## 将来の拡張: 他領域の Hermes MCP (Phase 5 以降の候補)
+## Phase 6 — OAuth 2.1 化 (Claude.ai / ChatGPT 対応、2026-05-18 完了)
+
+### 背景
+
+Phase 4 の static bearer 認証は Claude Code / Codex CLI からは使えるが、**Claude.ai のコネクタは OAuth ディスカバリ必須** で受け入れない:
+
+- 試行ログ: `POST /mcp` → 401 → `/.well-known/oauth-protected-resource` → 404 → `/.well-known/oauth-authorization-server` → 404 → `/register` → 404 → 「Couldn't reach the MCP server」表示
+- ChatGPT Connectors も同様に OAuth ベースのみ
+
+### 設計判断
+
+- ip-mcp の `auth/` パターン (SQLite-backed `OAuthAuthorizationServerProvider` 継承) を **同作者作品として参考にして移植**
+- FastMCP 3.x の `OAuthProvider` を継承することで `/authorize` `/token` `/register` `/revoke` `/.well-known/oauth-*` の SDK 自動ルートを得る
+- master password 1 個でブラウザ consent → トークン発行のシンプルなフロー (single user 想定)
+
+### OAuth 実装
+
+- [x] `src/x_hermes_mcp/auth/provider.py` — `SqliteOAuthProvider` 実装 (DCR / auth_code / access_token / refresh_token 4 表、aiosqlite で async)
+- [x] `src/x_hermes_mcp/auth/pages.py` — `/consent` GET+POST ハンドラ (master password 入力フォーム)
+- [x] `server.py` — transport が HTTP 系の時に OAuth provider をマウント、`@mcp.custom_route("/consent")` で consent ページ登録
+- [x] `.env.example` 更新: `MCP_ADMIN_PASSWORD`, `X_HERMES_MCP_BASE_URL`, `OAUTH_DB_PATH` を追加、`X_HERMES_MCP_TOKEN` を廃止
+- [x] host で master password 生成 (`secrets.token_urlsafe(32)`)、`.env` chmod 600 で配置
+- [x] OAuth DB (`/home/kite/.hermes/x_hermes_mcp_oauth.db`) は bind mount される `~/.hermes/` 配下なのでコンテナ再生成でトークン永続
+- [x] container rebuild → discovery エンドポイント 200 OK + DCR `/register` 201 確認
+
+### クライアント側 OAuth 接続手順
+
+1. `.mcp.json` から `Authorization: Bearer ...` ヘッダを削除 (URL だけにする)
+2. Claude Code / Claude.ai / ChatGPT 再起動
+3. 初回接続時にブラウザで `/consent?session_id=...` が開く → master password 入力
+4. 認可コード → トークン交換 → 以降は refresh で自動更新
+
+---
+
+## Phase 7 — Raw x_search 直接呼び出し (Grok-4.3 synthesis バイパス、2026-05-18 P1 完了)
+
+### 動機
+
+既存 5 ツールはすべて `hermes -z` 経由で **Grok-4.3 (oneshot)** を起動し、その内部で `x_search` を呼んでいた。実態:
+
+- データソースは x_search のみ
+- Grok-4.3 の役割は「`x_search.answer` の自然文を ConnectC2X 互換 schema に整形する」だけ
+- このラップで 60〜120 秒の応答時間 + synthesis 揺らぎを払っている
+
+### Raw 化の方針
+
+- `tools.x_search_tool()` は通常の Python 関数で、xAI `/responses` エンドポイントを直接叩いて構造体を返す
+- これを **subprocess で Hermes Python 経由で呼ぶ** ことで Grok-4.3 ラップを完全に省ける
+- 応答 30〜45 秒、決定的出力、Grok-4.3 quota 消費ゼロ (内部の grok-4.20-reasoning 分のみ)
+
+### Raw 実装 (P1)
+
+- [x] `src/x_hermes_mcp/x_search_client.py` — `call_x_search(...)`、Hermes Python に subprocess してパラメータを JSON stdin で渡し、結果を JSON stdout で受ける
+- [x] `src/x_hermes_mcp/tools/x_search.py` — 上記の薄い MCP 用ラッパ
+- [x] `server.py` に `x_search` を 6 番目のツールとして登録
+- [x] ローカル実測: 35 秒、19 件 inline_citations、xAI 生構造体
+- [x] container でも subprocess 経由で `tools.x_search_tool` import 可能を確認、デプロイ
+
+### 残作業 (P2-P4、次セッション以降)
+
+- [ ] **P2**: `fetch_tweet` バックエンドを raw + Python パーサに置換 (regex/heuristic で answer から metrics・著者抽出、Grok 経由版とパリティ実測)
+- [ ] **P3**: `search_tweets` / `get_quote_tweets` / `get_trends` を同様に置換
+- [ ] **P4**: `fetch_tweet_chain` を新 raw の上に再構築 (depth 2 で 1-2 分に短縮)
+
+### 想定される到達点
+
+P4 まで完走すれば、全ツールの応答時間が **1/3** 程度に短縮、出力安定性が劇的向上 (synthesis 揺らぎ消滅)、Grok-4.3 quota 消費ほぼゼロ。
+
+---
+
+## 将来の拡張: 他領域の Hermes MCP (Phase 8 以降の候補)
 
 Hermes Agent 本体は X 検索以外にも幅広く動く。Phase 2 で確立したパターン (構造化プロンプト → JSON 出力 → MCP 化) は他領域にも同形で転用可能。**Phase 4 までで X-HERMES-MCP の本番運用が安定してから着手**する想定。
 
