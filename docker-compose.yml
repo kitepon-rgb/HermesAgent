@@ -18,6 +18,9 @@ services:
       # venv の shebang が /home/kite/.hermes/... を絶対指定するため、
       # コンテナ内も同じパスに見えていないと壊れる。
       - /home/kite/.hermes:/home/kite/.hermes
+      # uv 管理の Python 本体は ~/.local/share/uv/python/ に居て、venv の
+      # python symlink がそこを指す。書き込み不要なので read-only でマウント。
+      - /home/kite/.local/share/uv:/home/kite/.local/share/uv:ro
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 65432), timeout=2).close()"]
       interval: 60s
