@@ -1,0 +1,26 @@
+services:
+  x-hermes-mcp:
+    build: .
+    image: x-hermes-mcp:latest
+    container_name: x-hermes-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+    # UID 1000 で起動 (host の kite ユーザーと一致)。bind mount された
+    # ~/.hermes/ への書き込みが host 側でも kite 所有のまま保たれる。
+    user: "1000:1000"
+    # 既定は localhost のみバインド (この repo を git で配布する時に安全)。
+    # 本番デプロイ host では docker-compose.override.yml で LAN IP に上書き。
+    ports:
+      - "127.0.0.1:65432:65432"
+    volumes:
+      # host の Hermes インストール + OAuth 状態を同一パスでマウント。
+      # venv の shebang が /home/kite/.hermes/... を絶対指定するため、
+      # コンテナ内も同じパスに見えていないと壊れる。
+      - /home/kite/.hermes:/home/kite/.hermes
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('127.0.0.1', 65432), timeout=2).close()"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 10s

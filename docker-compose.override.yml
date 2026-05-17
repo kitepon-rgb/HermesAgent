@@ -1,0 +1,4 @@
+services:
+  x-hermes-mcp:
+    ports:
+      - "192.168.1.2:65432:65432"

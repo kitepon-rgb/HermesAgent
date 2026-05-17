@@ -1,0 +1,18 @@
+[project]
+name = "x-hermes-mcp"
+version = "0.1.0"
+description = "MCP server that wraps Hermes Agent's x_search behind structured tools — replicates ConnectC2X-compatible features via X Premium Plus subscription quota."
+requires-python = ">=3.11"
+dependencies = [
+  "fastmcp>=2.0",
+]
+
+[project.scripts]
+x-hermes-mcp = "x_hermes_mcp.server:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/x_hermes_mcp"]

@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+.vscode
+.claude
+.spotter
+.mcp.json
+.env
+.env.local
+*.pyc
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.log
+node_modules/
