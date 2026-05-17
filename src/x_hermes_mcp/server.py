@@ -22,6 +22,7 @@ from .tools.fetch_tweet_chain import fetch_tweet_chain as _fetch_tweet_chain
 from .tools.get_quote_tweets import get_quote_tweets as _get_quote_tweets
 from .tools.get_trends import get_trends as _get_trends
 from .tools.search_tweets import search_tweets as _search_tweets
+from .tools.x_search import x_search as _x_search
 
 
 _TRANSPORT = os.getenv("X_HERMES_MCP_TRANSPORT", "stdio")
@@ -161,6 +162,68 @@ def get_quote_tweets(source_url: str, max_quotes: int = 8) -> dict:
       max_quotes: Desired number of samples, 1-10. Default 8.
     """
     return _get_quote_tweets(source_url=source_url, max_quotes=max_quotes)
+
+
+@mcp.tool
+def x_search(
+    query: str,
+    allowed_x_handles: list[str] | None = None,
+    excluded_x_handles: list[str] | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    enable_image_understanding: bool = False,
+    enable_video_understanding: bool = False,
+) -> dict:
+    """Direct call to xAI's x_search Responses API — bypasses Grok-4.3 synthesis.
+
+    Returns the raw xAI response object as-is. **Faster and more deterministic**
+    than the schema-conforming wrappers (fetch_tweet / search_tweets / etc.)
+    because there is no outer Grok pass — the response comes straight from
+    grok-4.20-reasoning via xAI's /responses endpoint, billed against the X
+    Premium Plus subscription quota (no separate API charge).
+
+    Response time: ~30-45 seconds (vs 60-120s for the wrapped tools).
+
+    Response shape (xAI native, not normalized to ConnectC2X schema):
+      {
+        "success": bool, "provider": "xai",
+        "credential_source": "xai-oauth" | "xai",
+        "tool": "x_search", "model": "grok-4.20-reasoning",
+        "query": <the query string actually sent>,
+        "answer": <natural-language summary>,
+        "citations": [...],
+        "inline_citations": [{"url", "title", "start_index", "end_index"}, ...]
+      }
+
+    Prefer this tool when:
+    - You want raw, fast access to X data without schema overhead.
+    - You want deterministic output (no Grok-4.3 synthesis variance).
+    - You will further process the answer / citations yourself.
+
+    Prefer the wrapped tools (fetch_tweet etc.) when:
+    - You need a ConnectC2X-compatible schema with specific named fields.
+    - You need multi-step reasoning (e.g., quote chains).
+
+    Args:
+      query: Natural-language search query (required).
+      allowed_x_handles: Whitelist of X usernames to include (max 10).
+                        Mutually exclusive with `excluded_x_handles`.
+      excluded_x_handles: Blacklist of X usernames to exclude (max 10).
+      from_date: Period start, YYYY-MM-DD inclusive.
+      to_date: Period end, YYYY-MM-DD inclusive.
+      enable_image_understanding: Have Grok describe attached photos / GIFs
+                                   so visual content appears in `answer`.
+      enable_video_understanding: Have Grok describe attached videos.
+    """
+    return _x_search(
+        query=query,
+        allowed_x_handles=allowed_x_handles,
+        excluded_x_handles=excluded_x_handles,
+        from_date=from_date,
+        to_date=to_date,
+        enable_image_understanding=enable_image_understanding,
+        enable_video_understanding=enable_video_understanding,
+    )
 
 
 @mcp.tool
