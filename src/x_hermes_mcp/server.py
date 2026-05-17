@@ -83,17 +83,26 @@ if _oauth_provider is not None:
 def fetch_tweet(url: str) -> dict:
     """Fetch a single X (Twitter) post and return its structured JSON.
 
-    Source: Hermes Agent's x_search via Grok, billed against the X Premium Plus
-    subscription quota (no per-call API charge). Response time: ~1.5 minutes.
+    Backend: P7 V4 — calls xAI's x_search Responses API once with a query that
+    requests a JSON-formatted answer, then parses the JSON in Python. No
+    Grok-4.3 synthesis pass. Billed against X Premium Plus quota only.
 
-    Output: tweet_id, url, author{username, display_name}, created_at, text,
-    referenced_tweets (depth 1), metrics{likes, retweets, replies, quotes,
-    bookmarks, views} as string integers, media (often empty), notes.
+    Response time: ~25-45 seconds (3x faster than the previous Grok-mediated
+    backend, deterministic output).
 
-    Coverage limits vs. ConnectC2X fetch_tweet:
+    Output schema (ConnectC2X-compatible):
+      tweet_id, url, author{username, display_name},
+      created_at (ISO 8601 timestamp when xAI provides it, e.g. "2026-05-16T20:20:55Z"),
+      text (t.co URLs expanded), referenced_tweets[1] (full tweet_id +
+      author_username + text for the quoted post), metrics{likes, retweets,
+      replies, quotes, bookmarks, views} as exact integer strings, media[]
+      ({type, url:null, alt_text=Grok's visual description}), notes (null —
+      synthesis-era field, retained for schema compatibility),
+      source ("x_search_raw_v4" provenance tag).
+
+    Coverage notes vs. ConnectC2X fetch_tweet:
     - Single tweet only — use fetch_tweet_chain for multi-level expansion.
-    - Media URLs not surfaced.
-    - Dates are human-readable strings.
+    - Direct media URLs not surfaced; alt_text carries Grok's description.
 
     Args:
       url: Canonical X post URL, e.g. https://x.com/xai/status/2055745332919808181
