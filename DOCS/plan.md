@@ -224,14 +224,19 @@ hermes.kitepon.dynv6.net {
 - [x] 本リポジトリに Docker 構成 (`Dockerfile` / `docker-compose.yml` / `docker-compose.override.yml` / `.env.example` / `.dockerignore`) を追加
 - [x] `src/x_hermes_mcp/server.py` を transport + auth env 駆動に改修 (stdio / streamable-http 両対応)
 - [x] `src/x_hermes_mcp/hermes_runner.py` を `HERMES_BIN` env override 対応に改修
-- [ ] リポジトリを host (192.168.1.2) に同期 (`~/X-HERMES-MCP/`)
-- [ ] host の `~/X-HERMES-MCP/.env` を生成し `X_HERMES_MCP_TOKEN` をセット
-- [ ] `docker compose up -d --build` で起動
-- [ ] `~/license-server/Caddyfile` に上記ブロックを追記、Caddy reload
-- [ ] LAN マシン (WSL) の `/etc/hosts` に `192.168.1.2 hermes.kitepon.dynv6.net` 追記
-- [ ] 疎通確認 (`curl -H "Authorization: Bearer $TOKEN" https://hermes.kitepon.dynv6.net/mcp`)
-- [ ] Claude Code の `.mcp.json` を HTTP リモート版に書き換え、再起動して接続確認
-- [ ] 既存 ConnectC2X (同マシン稼働中) との同居動作を確認 (ポート衝突なし、Caddy ルート衝突なし)
+- [x] GitHub repo `kitepon-rgb/HermesAgent` (public) 作成、リポジトリを host (`~/HermesAgent/`) に clone
+- [x] host の `~/HermesAgent/.env` を生成し `X_HERMES_MCP_TOKEN` をセット (chmod 600)
+- [x] host に Hermes Agent をインストール (`install.sh --skip-setup --skip-browser`)
+- [x] WSL から host へ OAuth state (`~/.hermes/auth.json`) を scp、`xai-oauth: logged in` 確認
+- [x] `docker compose up -d --build` で起動
+- [x] container の bind mount を `/home/kite/.local/share/uv` 追加 (venv shebang 解決)
+- [x] container 環境に `HOME=/home/kite` を追加 (UID 1000 で起動時の `~` 解決)
+- [x] `~/license-server/Caddyfile` に `hermes.kitepon.dynv6.net` ブロック追記、Caddy reload
+- [x] LAN マシン (WSL) の `/etc/hosts` に `192.168.1.2 hermes.kitepon.dynv6.net` 追記
+- [x] 疎通確認 (`curl -H "Authorization: Bearer $TOKEN" https://hermes.kitepon.dynv6.net/mcp` → 200)
+- [x] Claude Code の `.mcp.json` を HTTP リモート版に書き換え (token は chat 非表示で scp 経由)、再起動して接続確認
+- [x] **end-to-end 動作確認 (2026-05-18)**: `mcp__X-HERMES-MCP__fetch_tweet` 経由で実 X 投稿の構造化 JSON が返ることを確認
+- [x] 既存 ConnectC2X (同マシン稼働中) との同居動作を確認 (ポート 65432 vs 3001、Caddy 別サブドメイン、衝突なし)
 
 ---
 
