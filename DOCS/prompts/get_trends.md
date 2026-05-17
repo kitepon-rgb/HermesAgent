@@ -1,6 +1,8 @@
 # get_trends — Hermes 経路 (X-HERMES-MCP) のプロンプト
 
-最終更新: 2026-05-17
+> ⚠️ **2026-05-18: P7 P3 で raw x_search + Python パーサに置換、本ファイルの V1 プロンプトは非アクティブ**。`src/x_hermes_mcp/tools/get_trends.py` に JSON 出力指示の query template が直接埋まっている。本ファイルは歴史記録。
+
+最終更新: 2026-05-17 (V1 内容のまま、V4 に置き換え済み)
 
 ## 目的
 
