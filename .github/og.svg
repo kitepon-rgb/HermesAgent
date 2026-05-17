@@ -29,7 +29,7 @@
   <rect width="1280" height="640" fill="url(#scanlines)"/>
   <rect width="1280" height="640" fill="url(#vignette)"/>
 
-  <g font-family="ui-monospace, 'JetBrains Mono', 'IBM Plex Mono', 'SFMono-Regular', Menlo, monospace" text-rendering="geometricPrecision">
+  <g font-family="'JetBrains Mono', 'IBM Plex Mono', 'SFMono-Regular', Menlo, Consolas, 'DejaVu Sans Mono', monospace">
     <text x="96" y="296" font-size="86" font-weight="700" letter-spacing="2" fill="#E6F1FF">X-HERMES-MCP</text>
     <text x="96" y="356" font-size="34" font-weight="500" letter-spacing="1" fill="#9146FF">Personal X research via Grok-4.x</text>
     <text x="96" y="402" font-size="22" font-weight="400" letter-spacing="0.5" fill="#8B95A7">Free under your X Premium Plus subscription</text>
@@ -59,7 +59,7 @@
     </g>
   </g>
 
-  <g font-family="ui-monospace, 'JetBrains Mono', 'IBM Plex Mono', monospace" font-size="16" letter-spacing="3" fill="#5B6478" text-anchor="middle">
+  <g font-family="'JetBrains Mono', 'IBM Plex Mono', Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="16" letter-spacing="3" fill="#5B6478" text-anchor="middle">
     <text x="640" y="588">MCP  ·  OAuth 2.1  ·  Self-hosted  ·  FastMCP</text>
   </g>
 </svg>
