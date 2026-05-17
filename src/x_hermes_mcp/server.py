@@ -1,10 +1,13 @@
 """X-HERMES-MCP サーバ — FastMCP エントリポイント。
 
 トランスポートは env で切替:
-- `X_HERMES_MCP_TRANSPORT=stdio` (既定、ローカル `.mcp.json` 用)
-- `X_HERMES_MCP_TRANSPORT=streamable-http` (Phase 4 本番デプロイ用)
+- `X_HERMES_MCP_TRANSPORT=stdio` (既定、ローカル `.mcp.json` 用、認証なし)
+- `X_HERMES_MCP_TRANSPORT=streamable-http` (本番デプロイ、OAuth 必須)
 
-streamable-http / sse 時は `X_HERMES_MCP_TOKEN` 必須 (bearer 認証)。
+HTTP 系時の必須 env:
+- `X_HERMES_MCP_BASE_URL`: サーバの公開 URL (例: `https://hermes.kitepon.dynv6.net`)
+- `MCP_ADMIN_PASSWORD`: consent ページで使う master password
+- `OAUTH_DB_PATH`: OAuth トークンを保存する SQLite パス
 """
 
 from __future__ import annotations
@@ -12,6 +15,7 @@ from __future__ import annotations
 import os
 
 from fastmcp import FastMCP
+from starlette.routing import Route
 
 from .tools.fetch_tweet import fetch_tweet as _fetch_tweet
 from .tools.fetch_tweet_chain import fetch_tweet_chain as _fetch_tweet_chain
@@ -22,27 +26,57 @@ from .tools.search_tweets import search_tweets as _search_tweets
 
 _TRANSPORT = os.getenv("X_HERMES_MCP_TRANSPORT", "stdio")
 _HTTP_TRANSPORTS = {"streamable-http", "sse", "http"}
+_oauth_provider = None  # 後で /consent ルート登録に再利用するため module-global
 
 
 def _build_auth():
-    """HTTP 系トランスポート時のみ bearer auth を有効化。"""
+    """HTTP 系トランスポート時のみ OAuth provider を有効化。"""
+    global _oauth_provider
     if _TRANSPORT not in _HTTP_TRANSPORTS:
         return None
-    token = os.environ.get("X_HERMES_MCP_TOKEN")
-    if not token:
+
+    base_url = os.environ.get("X_HERMES_MCP_BASE_URL")
+    if not base_url:
         raise RuntimeError(
-            "X_HERMES_MCP_TOKEN is required when X_HERMES_MCP_TRANSPORT is "
-            f"{_TRANSPORT!r}. Set it to a long random string in .env."
+            "X_HERMES_MCP_BASE_URL is required for HTTP transports "
+            "(e.g., https://hermes.kitepon.dynv6.net)"
         )
-    from fastmcp.server.auth.providers.debug import DebugTokenVerifier
-    return DebugTokenVerifier(
-        validate=lambda t: t == token,
-        client_id="x-hermes-mcp",
+    master_password = os.environ.get("MCP_ADMIN_PASSWORD")
+    if not master_password:
+        raise RuntimeError(
+            "MCP_ADMIN_PASSWORD is required for HTTP transports — set a long "
+            "random string in .env (used as the consent-page password)"
+        )
+    db_path = os.environ.get("OAUTH_DB_PATH", "/home/kite/.hermes/x_hermes_mcp_oauth.db")
+
+    from .auth.provider import SqliteOAuthProvider
+    _oauth_provider = SqliteOAuthProvider(
+        base_url=base_url,
+        master_password=master_password,
+        db_path=db_path,
     )
+    return _oauth_provider
 
 
 mcp = FastMCP("X-HERMES-MCP", auth=_build_auth())
 
+
+# ---------------- /consent route registration (HTTP only) ----------------
+
+if _oauth_provider is not None:
+    from .auth.pages import make_consent_handlers
+    _consent_get, _consent_post = make_consent_handlers(_oauth_provider)
+
+    @mcp.custom_route("/consent", methods=["GET"])
+    async def consent_get(request):
+        return await _consent_get(request)
+
+    @mcp.custom_route("/consent", methods=["POST"])
+    async def consent_post(request):
+        return await _consent_post(request)
+
+
+# ---------------- Tools ----------------
 
 @mcp.tool
 def fetch_tweet(url: str) -> dict:

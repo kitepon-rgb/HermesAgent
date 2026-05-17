@@ -5,6 +5,7 @@ description = "MCP server that wraps Hermes Agent's x_search behind structured t
 requires-python = ">=3.11"
 dependencies = [
   "fastmcp>=2.0",
+  "aiosqlite>=0.20",
 ]
 
 [project.scripts]
