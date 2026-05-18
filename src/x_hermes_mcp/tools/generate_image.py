@@ -1,23 +1,23 @@
-"""Generate an image via xAI and return three content blocks:
+"""Generate an image via xAI and return two text content blocks:
 
-  1. ImageContent — JPEG (<=512px, q60). Rendered inline by Claude Code
-     and (collapsed) by Claude Desktop. Silently dropped by Claude.ai web
-     and ChatGPT (known platform limitation, see DOCS/plan.md Phase 10),
-     so it is a "bonus" path, not the primary one.
-  2. TextContent (user-facing) — leads with the stable permanent URL on
+  1. TextContent (user-facing) — leads with the stable permanent URL on
      OUR domain as a bare https:// link. Web clients auto-link bare URLs,
-     so even when the inline image is dropped the user always has one
-     click to view the result. Kept short so the LLM relays it as-is
-     instead of summarising "完了しました" with no link.
-  3. TextContent (machine-readable JSON) — full metadata (url, model,
+     so the user always has one click to view the result. Kept short so
+     the LLM relays it as-is instead of summarising "完了しました" with
+     no link.
+  2. TextContent (machine-readable JSON) — full metadata (url, model,
      cost ticks, prompt, etc.) for callers that want to chain on it.
+
+We previously also returned an MCP ImageContent base64 block, but both
+Claude.ai web and ChatGPT silently drop it (known platform limitation,
+anthropic/claude-ai-mcp #238 / openai community #1375446), so the binary
+was burning conversation tokens with zero display benefit. URL-only.
 
 A simple time-based GC runs opportunistically on each call.
 """
 
 from __future__ import annotations
 
-import io
 import json
 import logging
 import os
@@ -28,22 +28,13 @@ from typing import Any
 from urllib import request as urllib_request
 from urllib.error import URLError
 
-from fastmcp.utilities.types import Image
 from mcp.types import TextContent
-from PIL import Image as PilImage
 
 from ..image_client import ImageGenError, call_image_generate
 
 log = logging.getLogger(__name__)
 
 _DOWNLOAD_TIMEOUT_S = 30
-# Aggressive defaults: a 768px / q75 JPEG of a high-frequency scene
-# (brick walls, foliage) still went to ~190 KB inline, which some MCP
-# clients drop or mis-render. 512px / q60 keeps everything under ~50 KB
-# while still being a perfectly readable preview; the full-res image
-# is always available via permanent_url.
-_INLINE_MAX_PX = 512
-_INLINE_JPEG_QUALITY = 60
 _RETENTION_SECONDS = 30 * 24 * 3600
 
 IMAGE_STORE = Path(os.getenv("X_HERMES_IMAGE_STORE", "/data/images"))
@@ -77,25 +68,6 @@ def _gc(now: float) -> None:
                 continue
     except Exception as exc:
         log.warning("image GC skipped: %s", exc)
-
-
-def _compress_for_inline(img_bytes: bytes) -> bytes:
-    """Resize + JPEG-recompress to keep inline payload small.
-
-    On any failure, fall back to the original bytes — better to ship a
-    bigger image than to ship nothing.
-    """
-    try:
-        pil = PilImage.open(io.BytesIO(img_bytes))
-        if pil.mode not in {"RGB", "L"}:
-            pil = pil.convert("RGB")
-        pil.thumbnail((_INLINE_MAX_PX, _INLINE_MAX_PX), PilImage.LANCZOS)
-        buf = io.BytesIO()
-        pil.save(buf, format="JPEG", quality=_INLINE_JPEG_QUALITY, optimize=True)
-        return buf.getvalue()
-    except Exception as exc:
-        log.warning("inline compression failed (%s); using original bytes", exc)
-        return img_bytes
 
 
 def _user_facing_text(meta: dict[str, Any]) -> str:
@@ -207,9 +179,6 @@ def generate_image(
         log.warning("image hosting save failed: %s", exc)
         meta["hosting_error"] = f"could not persist image locally: {exc}"
 
-    inline_bytes = _compress_for_inline(img_bytes)
-    meta["inline_bytes"] = len(inline_bytes)
-    image = Image(data=inline_bytes, format="jpeg")
     user_text = TextContent(type="text", text=_user_facing_text(meta))
     meta_text = TextContent(type="text", text=json.dumps(meta, ensure_ascii=False))
-    return [image, user_text, meta_text]
+    return [user_text, meta_text]
