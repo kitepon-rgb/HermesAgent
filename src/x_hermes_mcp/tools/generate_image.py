@@ -30,8 +30,13 @@ from ..image_client import ImageGenError, call_image_generate
 log = logging.getLogger(__name__)
 
 _DOWNLOAD_TIMEOUT_S = 30
-_INLINE_MAX_PX = 768          # cap longest side for inline base64
-_INLINE_JPEG_QUALITY = 75     # JPEG quality for inline base64
+# Aggressive defaults: a 768px / q75 JPEG of a high-frequency scene
+# (brick walls, foliage) still went to ~190 KB inline, which some MCP
+# clients drop or mis-render. 512px / q60 keeps everything under ~50 KB
+# while still being a perfectly readable preview; the full-res image
+# is always available via permanent_url.
+_INLINE_MAX_PX = 512
+_INLINE_JPEG_QUALITY = 60
 _RETENTION_SECONDS = 30 * 24 * 3600
 
 IMAGE_STORE = Path(os.getenv("X_HERMES_IMAGE_STORE", "/data/images"))
