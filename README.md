@@ -67,8 +67,9 @@ All requests go to **xAI Responses API** through your existing OAuth, so usage h
 | `get_trends` | Raw + JSON mapper (V4) | ~86 s | Trend list with category and evidence URLs |
 | `get_quote_tweets` | Raw + `excluded_x_handles` (V4) | ~86 s | Quote sample with `source_total_quotes` |
 | `fetch_tweet_chain` | Composes `fetch_tweet` recursively | ~60 s @ depth 2 | Tree of normalized tweets |
+| `generate_image` | xAI `grok-imagine-image` via OAuth | ~5–20 s | `{url, mime_type, model, cost_in_usd_ticks, …}` |
 
-V4 backends bypass Grok-4.3 synthesis and call the Responses API directly — deterministic output, ISO 8601 timestamps, exact integer metrics, `source: "x_search_raw_v4"` provenance tag. See [`DOCS/plan.md`](DOCS/plan.md) for the full evolution from V3 wrap to V4 raw.
+V4 backends bypass Grok-4.3 synthesis and call the Responses API directly — deterministic output, ISO 8601 timestamps, exact integer metrics, `source: "x_search_raw_v4"` provenance tag. `generate_image` POSTs to `api.x.ai/v1/images/generations` directly with the same OAuth bearer, so SuperGrok / Premium Plus quota is the only billing path. See [`DOCS/plan.md`](DOCS/plan.md) for the full evolution from V3 wrap to V4 raw.
 
 ---
 

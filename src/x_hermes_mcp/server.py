@@ -18,6 +18,7 @@ from fastmcp import FastMCP
 
 from .tools.fetch_tweet import fetch_tweet as _fetch_tweet
 from .tools.fetch_tweet_chain import fetch_tweet_chain as _fetch_tweet_chain
+from .tools.generate_image import generate_image as _generate_image
 from .tools.get_quote_tweets import get_quote_tweets as _get_quote_tweets
 from .tools.get_trends import get_trends as _get_trends
 from .tools.search_tweets import search_tweets as _search_tweets
@@ -95,6 +96,9 @@ if _oauth_provider is not None:
 #
 #   Your need doesn't fit the above OR you want to combine angles
 #       → x_search                 (raw, flexible, free-form natural language)
+#
+#   You want to GENERATE an image from a text prompt
+#       → generate_image           (xAI grok-imagine-image via OAuth)
 #
 # All tools billed against X Premium Plus subscription quota (no separate
 # API charge). All tools return a "source" field for provenance.
@@ -342,6 +346,55 @@ def fetch_tweet_chain(url: str, max_depth: int = 2) -> dict:
                  response time explosion).
     """
     return _fetch_tweet_chain(url=url, max_depth=max_depth)
+
+
+@mcp.tool
+def generate_image(
+    prompt: str,
+    aspect_ratio: str = "1:1",
+    resolution: str = "1k",
+    quality: bool = False,
+) -> dict:
+    """Generate a single image via xAI's `grok-imagine-image` (text-to-image).
+
+    USE WHEN:
+    - "Make / generate / draw an image of <subject>"
+    - You need a fresh visual to embed, illustrate, or attach
+    - Concept art, mock-ups, hero images, social-media assets
+
+    DON'T USE FOR:
+    - Editing an existing image — this endpoint is text-to-image only
+    - Charts / graphs / diagrams — use mermaid or matplotlib
+    - Photo-realistic faces of real living people (xAI may refuse)
+
+    Backend: subprocess into Hermes' Python venv to borrow the OAuth bearer,
+    then POST `https://api.x.ai/v1/images/generations` directly. No
+    `hermes -z` or FAL.ai involvement, so the only billing path is the
+    SuperGrok / Premium Plus subscription quota tied to the OAuth token.
+
+    Response time: ~5-10 sec (default) / ~10-20 sec (quality=True).
+
+    Output:
+      url               https://imgen.x.ai/...  (temporary; download to persist)
+      mime_type         image/jpeg or image/png
+      model             grok-imagine-image or -quality
+      prompt, aspect_ratio, resolution  (echoed back)
+      cost_in_usd_ticks  informational, 1e9 ticks = $1 pay-per-use equiv
+                         (you are not charged this when OAuth is in use)
+      source            "xai_imgen_raw_v1"
+
+    Args:
+      prompt: text-to-image description (English works best).
+      aspect_ratio: "1:1" (default), "16:9", "9:16", "4:3", "3:4", "21:9".
+      resolution: "1k" (default, faster) or "2k" (higher detail).
+      quality: True → use grok-imagine-image-quality (slower, more detail).
+    """
+    return _generate_image(
+        prompt=prompt,
+        aspect_ratio=aspect_ratio,
+        resolution=resolution,
+        quality=quality,
+    )
 
 
 def main() -> None:
