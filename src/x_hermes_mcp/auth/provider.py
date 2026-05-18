@@ -49,6 +49,10 @@ ACCESS_TOKEN_TTL_SECONDS = 3600              # 1 hour
 REFRESH_TOKEN_TTL_SECONDS = 30 * 24 * 3600   # 30 days
 AUTH_CODE_TTL_SECONDS = 600                  # 10 minutes
 CONSENT_TTL_SECONDS = 600                    # 10 minutes
+# Just-rotated refresh tokens replay the same response for this many seconds.
+# Lets clients that lose the new token to a network blip or race recover
+# without forcing a full re-consent.
+REFRESH_TOKEN_GRACE_SECONDS = 60
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS clients (
@@ -123,6 +127,20 @@ class SqliteOAuthProvider(OAuthProvider):
             conn.executescript(_SCHEMA)
             conn.execute("PRAGMA journal_mode=WAL")
             conn.execute("PRAGMA synchronous=NORMAL")
+            # Additive migration: grace-period columns on refresh_tokens.
+            existing_cols = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(refresh_tokens)")
+            }
+            if "consumed_at" not in existing_cols:
+                conn.execute(
+                    "ALTER TABLE refresh_tokens ADD COLUMN consumed_at REAL"
+                )
+            if "successor_token_response_json" not in existing_cols:
+                conn.execute(
+                    "ALTER TABLE refresh_tokens "
+                    "ADD COLUMN successor_token_response_json TEXT"
+                )
         log.info("OAuth store: SQLite at %s", self._db_path)
 
     # ---------------- DCR ----------------
@@ -310,20 +328,29 @@ class SqliteOAuthProvider(OAuthProvider):
     ) -> RefreshToken | None:
         async with aiosqlite.connect(self._db_path) as conn:
             cur = await conn.execute(
-                "SELECT data_json, expires_at, client_id FROM refresh_tokens WHERE token = ?",
+                "SELECT data_json, expires_at, client_id, consumed_at "
+                "FROM refresh_tokens WHERE token = ?",
                 (refresh_token,),
             )
             row = await cur.fetchone()
             if row is None:
                 return None
-            data_json, expires_at, rt_client_id = row
+            data_json, expires_at, rt_client_id, consumed_at = row
             if rt_client_id != client.client_id:
                 return None
-            if expires_at is not None and expires_at < time.time():
+            now = time.time()
+            if expires_at is not None and expires_at < now:
                 await conn.execute(
                     "DELETE FROM refresh_tokens WHERE token = ?", (refresh_token,)
                 )
                 await conn.commit()
+                return None
+            # Already-rotated tokens stay valid for REFRESH_TOKEN_GRACE_SECONDS
+            # so a client that lost the new response can replay this call.
+            if (
+                consumed_at is not None
+                and (now - consumed_at) > REFRESH_TOKEN_GRACE_SECONDS
+            ):
                 return None
             return RefreshToken.model_validate_json(data_json)
 
@@ -333,25 +360,49 @@ class SqliteOAuthProvider(OAuthProvider):
         refresh_token: RefreshToken,
         scopes: list[str],
     ) -> OAuthToken:
-        token_str = secrets.token_urlsafe(48)
-        new_refresh = secrets.token_urlsafe(48)
-        now = int(time.time())
-        actual_scopes = scopes or refresh_token.scopes
-        access = AccessToken(
-            token=token_str,
-            client_id=client.client_id or "",
-            scopes=actual_scopes,
-            expires_at=now + ACCESS_TOKEN_TTL_SECONDS,
-        )
-        new_rt = RefreshToken(
-            token=new_refresh,
-            client_id=client.client_id or "",
-            scopes=actual_scopes,
-            expires_at=now + REFRESH_TOKEN_TTL_SECONDS,
-        )
         async with aiosqlite.connect(self._db_path) as conn:
+            # Grace-period idempotent replay: if this refresh token was already
+            # consumed and we still hold the prior response, return it verbatim.
+            cur = await conn.execute(
+                "SELECT consumed_at, successor_token_response_json "
+                "FROM refresh_tokens WHERE token = ?",
+                (refresh_token.token,),
+            )
+            row = await cur.fetchone()
+            if row is not None and row[0] is not None and row[1] is not None:
+                return OAuthToken.model_validate_json(row[1])
+
+            token_str = secrets.token_urlsafe(48)
+            new_refresh = secrets.token_urlsafe(48)
+            now = int(time.time())
+            actual_scopes = scopes or refresh_token.scopes
+            access = AccessToken(
+                token=token_str,
+                client_id=client.client_id or "",
+                scopes=actual_scopes,
+                expires_at=now + ACCESS_TOKEN_TTL_SECONDS,
+            )
+            new_rt = RefreshToken(
+                token=new_refresh,
+                client_id=client.client_id or "",
+                scopes=actual_scopes,
+                expires_at=now + REFRESH_TOKEN_TTL_SECONDS,
+            )
+            response = OAuthToken(
+                access_token=token_str,
+                token_type="Bearer",
+                expires_in=ACCESS_TOKEN_TTL_SECONDS,
+                refresh_token=new_refresh,
+                scope=" ".join(actual_scopes) if actual_scopes else None,
+            )
+            # Mark the old refresh as consumed and remember the response we
+            # handed out, instead of deleting it outright. GC happens later
+            # via the TTL check in load_refresh_token.
             await conn.execute(
-                "DELETE FROM refresh_tokens WHERE token = ?", (refresh_token.token,)
+                "UPDATE refresh_tokens "
+                "SET consumed_at = ?, successor_token_response_json = ? "
+                "WHERE token = ?",
+                (time.time(), response.model_dump_json(), refresh_token.token),
             )
             await conn.execute(
                 "INSERT INTO access_tokens (token, client_id, data_json, expires_at) "
@@ -359,18 +410,14 @@ class SqliteOAuthProvider(OAuthProvider):
                 (token_str, access.client_id, access.model_dump_json(), access.expires_at),
             )
             await conn.execute(
-                "INSERT INTO refresh_tokens (token, client_id, data_json, expires_at) "
-                "VALUES (?, ?, ?, ?)",
+                "INSERT INTO refresh_tokens "
+                "(token, client_id, data_json, expires_at, consumed_at, "
+                "successor_token_response_json) "
+                "VALUES (?, ?, ?, ?, NULL, NULL)",
                 (new_refresh, new_rt.client_id, new_rt.model_dump_json(), new_rt.expires_at),
             )
             await conn.commit()
-        return OAuthToken(
-            access_token=token_str,
-            token_type="Bearer",
-            expires_in=ACCESS_TOKEN_TTL_SECONDS,
-            refresh_token=new_refresh,
-            scope=" ".join(actual_scopes) if actual_scopes else None,
-        )
+            return response
 
     # ---------------- token verification (per-request) ----------------
 

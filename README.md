@@ -91,7 +91,7 @@ flowchart LR
     style X fill:#000,stroke:#444,color:#fff
 ```
 
-OAuth 2.1 provider is SQLite-backed (DCR / auth_code / access_token / refresh_token), gated by a single master-password consent screen for solo use.
+OAuth 2.1 provider is SQLite-backed (DCR / auth_code / access_token / refresh_token), gated by a single master-password consent screen for solo use. Refresh-token rotation includes a 60-second grace window, and the HTTP transport is stateless — so client races and container restarts don't push you back to the consent page.
 
 ---
 

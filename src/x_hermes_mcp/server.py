@@ -350,7 +350,11 @@ def main() -> None:
         return
     host = os.getenv("X_HERMES_MCP_HOST", "0.0.0.0")
     port = int(os.getenv("X_HERMES_MCP_PORT", "65432"))
-    mcp.run(_TRANSPORT, host=host, port=port)
+    # stateless_http=True: don't keep per-session state on the server, so a
+    # container restart doesn't make every connected client error with
+    # "Session not found". Our tools are all request/response — we don't use
+    # server-initiated notifications, which is the only thing this disables.
+    mcp.run(_TRANSPORT, host=host, port=port, stateless_http=True)
 
 
 if __name__ == "__main__":
