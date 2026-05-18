@@ -354,7 +354,7 @@ def generate_image(
     aspect_ratio: str = "1:1",
     resolution: str = "1k",
     quality: bool = False,
-) -> dict:
+) -> list:
     """Generate a single image via xAI's `grok-imagine-image` (text-to-image).
 
     USE WHEN:
@@ -374,14 +374,18 @@ def generate_image(
 
     Response time: ~5-10 sec (default) / ~10-20 sec (quality=True).
 
-    Output:
-      url               https://imgen.x.ai/...  (temporary; download to persist)
+    Return: a 2-element list. First element is an MCP ImageContent block
+    (base64-encoded bytes of the generated image) — Claude.ai / ChatGPT
+    Connectors render this inline without needing the (ephemeral) source
+    URL to be reachable. Second element is the metadata dict:
+      url               https://imgen.x.ai/...  (temporary; ~minutes TTL)
       mime_type         image/jpeg or image/png
       model             grok-imagine-image or -quality
       prompt, aspect_ratio, resolution  (echoed back)
       cost_in_usd_ticks  informational, 1e9 ticks = $1 pay-per-use equiv
                          (you are not charged this when OAuth is in use)
       source            "xai_imgen_raw_v1"
+    On error the list contains only the metadata dict with an "error" key.
 
     Args:
       prompt: text-to-image description (English works best).
