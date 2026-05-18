@@ -410,13 +410,17 @@ def generate_image(
 
     Response time: ~5-10 sec (default) / ~10-20 sec (quality=True).
 
-    Return: a 2-element list of TextContent blocks.
-      [0] user-facing — leads with the stable `permanent_url` on this
-          server's domain as a bare https:// link. Web chat UIs auto-link
-          bare URLs, so the user always has one click to view the result.
-          Relay this verbatim instead of paraphrasing "完了しました" with
-          no link.
-      [1] JSON — full metadata for programmatic chaining:
+    Return: a 3-element list.
+      [0] ImageContent — compressed JPEG (<=512px / q60). Web clients
+          drop it from the UI (known platform limitation), but the LLM
+          can still SEE the bytes for vision review — use them to grade
+          the output against the prompt before relaying to the user.
+      [1] TextContent (user-facing) — leads with the stable
+          `permanent_url` on this server's domain as a bare https:// link.
+          Web chat UIs auto-link bare URLs, so the user always has one
+          click to view the result. Relay this verbatim instead of
+          paraphrasing "完了しました" with no link.
+      [2] TextContent (JSON) — full metadata for programmatic chaining:
             permanent_url     stable URL we host (~30 days retention)
             url               original xAI temp URL (~minutes TTL)
             mime_type         image/jpeg or image/png
@@ -425,13 +429,9 @@ def generate_image(
             cost_in_usd_ticks  informational, 1e9 ticks = $1 pay-per-use
                                equiv (not charged when OAuth is in use)
             source            "xai_imgen_raw_v1"
-    On error the user-facing TextContent states what went wrong, so the
-    assistant cannot silently report success.
-
-    Inline ImageContent was previously returned too, but both Claude.ai
-    web and ChatGPT drop it silently (known platform limitation), so
-    the base64 was burning conversation tokens for no display benefit.
-    Use the permanent_url instead.
+    On error the ImageContent is omitted and the user-facing TextContent
+    states what went wrong, so the assistant cannot silently report
+    success.
 
     Args:
       prompt: text-to-image description (English works best).
