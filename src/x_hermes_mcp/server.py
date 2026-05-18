@@ -77,6 +77,42 @@ if _oauth_provider is not None:
         return await _consent_post(request)
 
 
+# ---------------- /images/<id>.<ext> public route ----------------
+#
+# Serves the bytes that `generate_image` cached on disk so MCP clients
+# that prefer <img src=...> over inline base64 have a stable, reachable
+# URL on our domain (xAI's own imgen.x.ai temp URLs 403 without a
+# browser User-Agent and only live for ~minutes).
+
+import re as _re
+from pathlib import Path as _Path
+from starlette.responses import FileResponse as _FileResponse, Response as _Response
+
+_IMAGE_STORE = _Path(os.getenv("X_HERMES_IMAGE_STORE", "/data/images"))
+# 32 hex chars + extension allowlist. Random UUID4.hex => unguessable.
+_IMAGE_FILENAME_RE = _re.compile(r"^[0-9a-f]{32}\.(jpg|jpeg|png|webp)$")
+_IMAGE_MIME_BY_EXT = {
+    "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    "png": "image/png", "webp": "image/webp",
+}
+
+
+@mcp.custom_route("/images/{filename}", methods=["GET"])
+async def serve_image(request):
+    filename = request.path_params["filename"]
+    if not _IMAGE_FILENAME_RE.match(filename):
+        return _Response("not found", status_code=404)
+    path = _IMAGE_STORE / filename
+    if not path.is_file():
+        return _Response("not found", status_code=404)
+    ext = filename.rsplit(".", 1)[1]
+    return _FileResponse(
+        path,
+        media_type=_IMAGE_MIME_BY_EXT.get(ext, "application/octet-stream"),
+        headers={"Cache-Control": "public, max-age=86400, immutable"},
+    )
+
+
 # ---------------- Tools ----------------
 #
 # Tool selection guide (use this to pick the right tool):
