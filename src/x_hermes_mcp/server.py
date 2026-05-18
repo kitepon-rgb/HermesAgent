@@ -348,7 +348,7 @@ def fetch_tweet_chain(url: str, max_depth: int = 2) -> dict:
     return _fetch_tweet_chain(url=url, max_depth=max_depth)
 
 
-@mcp.tool
+@mcp.tool(output_schema=None)
 def generate_image(
     prompt: str,
     aspect_ratio: str = "1:1",
