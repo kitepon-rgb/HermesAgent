@@ -228,18 +228,18 @@ tools_deny = [
 | 項目 | 採用 | 既存パターン参照 |
 |---|---|---|
 | 外部到達 | DDNS サブドメイン + 共通 Caddy (TLS 終端) | `~/license-server/Caddyfile` 一元管理 |
-| サブドメイン | `hermes.kitepon.dynv6.net` | 将来 Phase 5+ の親ドメインとしても使う |
+| サブドメイン | `hermes.kitepon.dev` | 将来 Phase 5+ の親ドメインとしても使う |
 | 認証 | **OAuth 2.1 (SQLite-backed、master password consent)** ← P6 で bearer から移行 | ip-mcp パターン踏襲 |
 | トランスポート | streamable-http | FastMCP 標準 |
 | ポート | 65432 (192.168.1.2 にバインド) | 既存クラスタ全部から離れた 6 万番台 |
 | ホスト構成 | Docker compose (`~/X-HERMES-MCP/`) | `~/ip-mcp/` を踏襲 |
 | Hermes 同梱 | host の `~/.hermes/` を **同一パスで** bind mount | venv の絶対パス shebang のため |
-| LAN マシン側 | `/etc/hosts` に `192.168.1.2 hermes.kitepon.dynv6.net` を追記 | ルータがヘアピン NAT 非対応 |
+| LAN マシン側 | `/etc/hosts` に `192.168.1.2 hermes.kitepon.dev` を追記 | ルータがヘアピン NAT 非対応 |
 
 ### Caddy 設定 (`~/license-server/Caddyfile` の末尾に追記)
 
 ```caddy
-hermes.kitepon.dynv6.net {
+hermes.kitepon.dev {
     header {
         Strict-Transport-Security "max-age=31536000; includeSubDomains"
         X-Content-Type-Options "nosniff"
@@ -267,9 +267,9 @@ hermes.kitepon.dynv6.net {
 - [x] `docker compose up -d --build` で起動
 - [x] container の bind mount を `/home/kite/.local/share/uv` 追加 (venv shebang 解決)
 - [x] container 環境に `HOME=/home/kite` を追加 (UID 1000 で起動時の `~` 解決)
-- [x] `~/license-server/Caddyfile` に `hermes.kitepon.dynv6.net` ブロック追記、Caddy reload
-- [x] LAN マシン (WSL) の `/etc/hosts` に `192.168.1.2 hermes.kitepon.dynv6.net` 追記
-- [x] 疎通確認 (`curl -H "Authorization: Bearer $TOKEN" https://hermes.kitepon.dynv6.net/mcp` → 200)
+- [x] `~/license-server/Caddyfile` に `hermes.kitepon.dev` ブロック追記、Caddy reload
+- [x] LAN マシン (WSL) の `/etc/hosts` に `192.168.1.2 hermes.kitepon.dev` 追記
+- [x] 疎通確認 (`curl -H "Authorization: Bearer $TOKEN" https://hermes.kitepon.dev/mcp` → 200)
 - [x] Claude Code の `.mcp.json` を HTTP リモート版に書き換え (token は chat 非表示で scp 経由)、再起動して接続確認
 - [x] **end-to-end 動作確認 (2026-05-18)**: `mcp__X-HERMES-MCP__fetch_tweet` 経由で実 X 投稿の構造化 JSON が返ることを確認
 - [x] 既存 ConnectC2X (同マシン稼働中) との同居動作を確認 (ポート 65432 vs 3001、Caddy 別サブドメイン、衝突なし)
@@ -405,12 +405,12 @@ Phase 6 で OAuth を立ててから、claude.ai / ChatGPT 双方で「使おう
 
 ### 別件 (今回は応急対応のみ、恒久対策は別途)
 
-DNS 層で `hermes.kitepon.dynv6.net` が一部リゾルバで NXDOMAIN になる事案が並行発生:
+DNS 層で `hermes.kitepon.dev` が一部リゾルバで NXDOMAIN になる事案が並行発生:
 
 - ddnser コンテナが 09:55 JST に停止 → 再起動 (`docker inspect` で `RestartCount=0 ExitCode=0` → クラッシュではなく手動 restart 相当)
 - 停止期間中に Cloudflare 公開 DNS (1.1.1.1) が NXDOMAIN をネガティブキャッシュ
 - ChatGPT/OpenAI のコネクタプロキシがこのリゾルバ系統を引いていたため `mcp_network_error` 連発
-- 応急: `https://cloudflare-dns.com/api/v1/purge?domain=hermes.kitepon.dynv6.net&type=A` で手動 purge → 即復旧
+- 応急: `https://cloudflare-dns.com/api/v1/purge?domain=hermes.kitepon.dev&type=A` で手動 purge → 即復旧
 - 恒久対策候補: ddnser の停止アラート、もしくは DNS 周りを Cloudflare DNS 等のより伝播強い経路に移行
 
 ---
@@ -481,7 +481,7 @@ Phase 9 で generate_image が成功するも、Claude.ai web / ChatGPT web の 
 ### 実装
 
 - [x] xAI temp URL (`imgen.x.ai/xai-tmp-imgen-*`) は数分で expire + ブラウザ User-Agent 必須の 403 ガード → そのままユーザーに渡せない → **自前で再ホスト**
-- [x] `src/x_hermes_mcp/tools/generate_image.py`: xAI から download → uuid4 で命名して disk 保存 → `permanent_url = https://hermes.kitepon.dynv6.net/images/<32hex>.<ext>` をメタデータに付ける
+- [x] `src/x_hermes_mcp/tools/generate_image.py`: xAI から download → uuid4 で命名して disk 保存 → `permanent_url = https://hermes.kitepon.dev/images/<32hex>.<ext>` をメタデータに付ける
 - [x] `src/x_hermes_mcp/server.py`: `/images/{filename}` の Starlette FileResponse route 追加。filename は `^[0-9a-f]{32}\.(jpg|jpeg|png|webp)$` で strict allowlist (path traversal 防止、UUID なので unguessable)
 - [x] `docker-compose.yml`: `/home/kite/.hermes/x_hermes_mcp_images:/data/images` を bind mount、container 再生成で消えない
 - [x] 30 日経過した画像は `_gc()` でツール呼出のたびに opportunistic 削除 (per-file stat、broad-except)
@@ -495,7 +495,7 @@ Phase 9 で generate_image が成功するも、Claude.ai web / ChatGPT web の 
     噛み合ってるか」を vision で grade するために必要。一度落とそうとして
     試したら「AI が自分の生成物を見れない」状態になり revert (dc7df71)
 [1] TextContent (user-facing 1 行)
-    "Generated image — open to view: https://hermes.kitepon.dynv6.net/images/<id>.jpg
+    "Generated image — open to view: https://hermes.kitepon.dev/images/<id>.jpg
      (grok-imagine-image · 1:1 · 1k)"
     bare URL なので web 系の auto-link で必ずクリッカブルに。LLM が
     そのまま転載しやすい短い形にしておく
