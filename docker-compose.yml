@@ -26,7 +26,7 @@ services:
       # uv 管理の Python 本体は ~/.local/share/uv/python/ に居て、venv の
       # python symlink がそこを指す。書き込み不要なので read-only でマウント。
       - /home/kite/.local/share/uv:/home/kite/.local/share/uv:ro
-      # generate_image が保存する画像本体。hermes.kitepon.dynv6.net/images/<id>
+      # generate_image が保存する画像本体。hermes.kitepon.dev/images/<id>
       # で公開、30 日で自動 GC。ホスト側に出して container 再生成で消えないように。
       - /home/kite/.hermes/x_hermes_mcp_images:/data/images
     healthcheck:

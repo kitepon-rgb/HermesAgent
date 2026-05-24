@@ -5,7 +5,7 @@
 - `X_HERMES_MCP_TRANSPORT=streamable-http` (Phase 4 本番デプロイ、OAuth 必須)
 
 HTTP 系時の必須 env:
-- `X_HERMES_MCP_BASE_URL`: サーバの公開 URL (例: `https://hermes.kitepon.dynv6.net`)
+- `X_HERMES_MCP_BASE_URL`: サーバの公開 URL (例: `https://hermes.kitepon.dev`)
 - `MCP_ADMIN_PASSWORD`: consent ページで使う master password
 - `OAUTH_DB_PATH`: OAuth トークンを保存する SQLite パス
 """
@@ -40,7 +40,7 @@ def _build_auth():
     if not base_url:
         raise RuntimeError(
             "X_HERMES_MCP_BASE_URL is required for HTTP transports "
-            "(e.g., https://hermes.kitepon.dynv6.net)"
+            "(e.g., https://hermes.kitepon.dev)"
         )
     master_password = os.environ.get("MCP_ADMIN_PASSWORD")
     if not master_password:

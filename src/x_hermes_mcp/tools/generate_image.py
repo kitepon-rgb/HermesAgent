@@ -50,7 +50,7 @@ _RETENTION_SECONDS = 30 * 24 * 3600
 
 IMAGE_STORE = Path(os.getenv("X_HERMES_IMAGE_STORE", "/data/images"))
 PUBLIC_BASE_URL = os.getenv(
-    "X_HERMES_MCP_BASE_URL", "https://hermes.kitepon.dynv6.net"
+    "X_HERMES_MCP_BASE_URL", "https://hermes.kitepon.dev"
 ).rstrip("/")
 
 
